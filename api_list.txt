@@ -1,0 +1,35 @@
+# Список АФІ для пошуку — Pharmasel (стерильні ін'єкції BFS)
+# Один рядок = одна речовина (назва або CAS)
+# Рядки з # ігноруються
+
+# ── Антибіотики ──────────────────────────────────────
+vancomycin
+imipenem
+meropenem
+ceftriaxone
+piperacillin
+gentamicin
+amikacin
+
+# ── Серцево-судинні ──────────────────────────────────
+epinephrine
+dopamine
+dobutamine
+norepinephrine
+lidocaine
+
+# ── Знеболюючі / анестетики ──────────────────────────
+morphine
+fentanyl
+ketamine
+propofol
+
+# ── Гормони / пептиди ────────────────────────────────
+oxytocin
+insulin
+heparin
+
+# ── Інші ─────────────────────────────────────────────
+metformin
+furosemide
+omeprazole
