@@ -162,6 +162,13 @@ with tab_search:
     col1, col2 = st.columns([3, 1])
     
     with col1:
+        # DEBUG: проверка ключа
+        _debug_key = os.getenv("ANTHROPIC_API_KEY", "")
+        if _debug_key:
+            st.success(f"🔑 API ключ найден ({_debug_key[:12]}...)")
+        else:
+            st.error("❌ API ключ НЕ найден! Проверьте Secrets в Streamlit Cloud.")
+        
         st.markdown("### Введите субстанции для поиска")
         input_text = st.text_area(
             "Одна субстанция на строку (поддерживаются разные форматы):",
