@@ -82,49 +82,69 @@ def pubchem_by_name(name):
     except: return {}
 
 
+def _normalize_cert(value):
+    """Нормализует значение сертификата в bool или None.
+    Claude API иногда возвращает 'true'/'false' как строку вместо boolean.
+    Эта функция гарантирует что значение всегда True, False или None."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        if value.lower() in ("true", "yes", "1"):
+            return True
+        if value.lower() in ("false", "no", "0"):
+            return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return None
+
+
 def ai_search_suppliers(name, cas, formula, category):
     if not ANTHROPIC_API_KEY:
-        print("    !! ANTHROPIC_API_KEY ne zadan")
-        return [{"name": "Postawschik utochnyaetsya", "country": "-", "contact": "-",
+        print("    !! ANTHROPIC_API_KEY not set")
+        return [{"name": "Supplier unknown", "country": "-", "contact": "-",
                  "cep": None, "gmp": None, "iso22000": None, "fssc22000": None}]
 
     if category == "bad":
-        cert_part = """Для КАЖДОГО поставщика укажи:
-1. Полное название компании
-2. Страну
-3. Email или сайт для контакта
-4. Есть ли сертификат ISO 22000 (безопасность пищевых продуктов) - true/false/null
-5. Есть ли сертификат GMP (необязательно для БАД, но полезно) - true/false/null
-6. Есть ли сертификат FSSC 22000 - true/false/null
+        cert_part = """For EACH supplier provide:
+1. Full company name
+2. Country
+3. Contact email or website
+4. Does the company have ISO 22000 certificate (food safety) - true/false/null
+5. Does the company have GMP certificate (optional for supplements) - true/false/null
+6. Does the company have FSSC 22000 certificate - true/false/null
 
-Ответь ТОЛЬКО валидным JSON-массивом:
+IMPORTANT: Use JSON boolean values true/false (NOT strings "true"/"false").
+
+Reply with ONLY a valid JSON array:
 [
   {"name": "Company", "country": "Country", "contact": "email@example.com", "iso22000": true, "gmp": true, "fssc22000": true}
 ]"""
-        context = "сырья для БАДов / пищевых добавок (dietary supplement ingredient)"
+        context = "dietary supplement ingredient / raw material"
     else:
-        cert_part = """Для КАЖДОГО поставщика укажи:
-1. Полное название компании
-2. Страну
-3. Email или сайт для контакта
-4. Есть ли CEP сертификат (Certificate of Suitability EDQM) - true/false/null
-5. Есть ли GMP сертификат - true/false/null
+        cert_part = """For EACH supplier provide:
+1. Full company name
+2. Country
+3. Contact email or website
+4. Does the company have CEP certificate (Certificate of Suitability EDQM) - true/false/null
+5. Does the company have GMP certificate - true/false/null
 
-Ответь ТОЛЬКО валидным JSON-массивом:
+IMPORTANT: Use JSON boolean values true/false (NOT strings "true"/"false").
+
+Reply with ONLY a valid JSON array:
 [
   {"name": "Company", "country": "Country", "contact": "email@example.com", "cep": true, "gmp": true}
 ]"""
-        context = "активного фармацевтического ингредиента (API)"
+        context = "active pharmaceutical ingredient (API)"
 
-    prompt = f"""Найди 3-5 реальных производителей/поставщиков {context}:
-Название: {name}
-CAS-номер: {cas}
-Формула: {formula}
+    prompt = f"""Find 3-5 real manufacturers/suppliers of {context}:
+Name: {name}
+CAS number: {cas}
+Formula: {formula}
 
 {cert_part}
 
-Если не знаешь точно про сертификат - ставь null.
-Верни ТОЛЬКО JSON, ничего больше."""
+If you are not sure about a certificate - use null.
+Return ONLY valid JSON, nothing else. No markdown, no explanation."""
 
     try:
         resp = httpx.post(
@@ -156,13 +176,18 @@ CAS-номер: {cas}
         text = re.sub(r"\s*```$", "", text)
         suppliers = json.loads(text)
         if isinstance(suppliers, list):
+            # Нормализуем все значения сертификатов
+            for sup in suppliers:
+                for key in ["cep", "gmp", "iso22000", "fssc22000"]:
+                    if key in sup:
+                        sup[key] = _normalize_cert(sup[key])
             return suppliers
     except json.JSONDecodeError:
         print("    !! JSON parse error")
     except Exception as e:
         print(f"    !! Error: {e}")
 
-    return [{"name": "Postawschik utochnyaetsya", "country": "-", "contact": "-",
+    return [{"name": "Supplier unknown", "country": "-", "contact": "-",
              "cep": None, "gmp": None, "iso22000": None, "fssc22000": None}]
 
 
@@ -201,20 +226,20 @@ def generate_excel(data, output_path, category):
     def cert_style(val):
         if val is True:   return "YES", C_GREEN_F, C_GREEN_D
         elif val is False: return "NO",  C_RED_F,   C_RED_D
-        else:              return "?  Uточнить", C_YELLOW, "7A6000"
+        else:              return "?  Unknown", C_YELLOW, "7A6000"
 
     is_bad = category == "bad"
     ws = wb.active
 
     if is_bad:
-        ws.title = "Все поставщики (БАД)"
-        title_text = f"Поиск поставщиков сырья для БАДов | {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-        headers = ["Сырьё","CAS-номер","Поставщик","Страна","Контакт","ISO 22000","GMP","FSSC 22000","Мол. формула"]
+        ws.title = "All suppliers (BAD)"
+        title_text = f"Supplement ingredient suppliers | {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+        headers = ["Ingredient","CAS","Supplier","Country","Contact","ISO 22000","GMP","FSSC 22000","Formula"]
         widths  = [24,14,28,14,30,16,16,16,18]
     else:
-        ws.title = "Все поставщики (Фарма)"
-        title_text = f"Поиск поставщиков АФИ | {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-        headers = ["АФИ","CAS-номер","Поставщик","Страна","Контакт","CEP серт.","GMP серт.","Мол. формула"]
+        ws.title = "All suppliers (Pharma)"
+        title_text = f"API suppliers | {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+        headers = ["API","CAS","Supplier","Country","Contact","CEP cert.","GMP cert.","Formula"]
         widths  = [24,14,28,14,30,16,16,18]
 
     nc = len(headers)
@@ -278,19 +303,17 @@ def generate_excel(data, output_path, category):
     ws.freeze_panes="A3"
 
     if is_bad:
-        _cert_sheet(wb.create_sheet("С ISO 22000"),data,"iso22000",True,"Поставщики с ISO 22000","1A6B3A",category)
-        _cert_sheet(wb.create_sheet("Без ISO 22000"),data,"iso22000",False,"Поставщики БЕЗ ISO 22000","8B1A1A",category)
-        _cert_sheet(wb.create_sheet("С FSSC 22000"),data,"fssc22000",True,"Поставщики с FSSC 22000","1A6B3A",category)
-        _cert_sheet(wb.create_sheet("Без FSSC 22000"),data,"fssc22000",False,"Поставщики БЕЗ FSSC 22000","8B1A1A",category)
+        _cert_sheet(wb.create_sheet("With ISO 22000"),data,"iso22000",True,"Suppliers WITH ISO 22000","1A6B3A",category)
+        _cert_sheet(wb.create_sheet("No ISO 22000"),data,"iso22000",False,"Suppliers WITHOUT ISO 22000","8B1A1A",category)
+        _cert_sheet(wb.create_sheet("With FSSC 22000"),data,"fssc22000",True,"Suppliers WITH FSSC 22000","1A6B3A",category)
+        _cert_sheet(wb.create_sheet("No FSSC 22000"),data,"fssc22000",False,"Suppliers WITHOUT FSSC 22000","8B1A1A",category)
     else:
-        _cert_sheet(wb.create_sheet("С CEP"),data,"cep",True,"Поставщики с CEP (EDQM)","1A6B3A",category)
-        _cert_sheet(wb.create_sheet("Без CEP"),data,"cep",False,"Поставщики БЕЗ CEP","8B1A1A",category)
-        _cert_sheet(wb.create_sheet("С GMP"),data,"gmp",True,"Поставщики с GMP","1A6B3A",category)
-        _cert_sheet(wb.create_sheet("Без GMP"),data,"gmp",False,"Поставщики БЕЗ GMP","8B1A1A",category)
+        _cert_sheet(wb.create_sheet("With CEP"),data,"cep",True,"Suppliers WITH CEP (EDQM)","1A6B3A",category)
+        _cert_sheet(wb.create_sheet("No CEP"),data,"cep",False,"Suppliers WITHOUT CEP","8B1A1A",category)
+        _cert_sheet(wb.create_sheet("With GMP"),data,"gmp",True,"Suppliers WITH GMP","1A6B3A",category)
+        _cert_sheet(wb.create_sheet("No GMP"),data,"gmp",False,"Suppliers WITHOUT GMP","8B1A1A",category)
 
     wb.save(output_path)
-    print(f"\n ✅ Звіт збережено: {output_path}")
-    print(f"      Аркушів: {len(wb.sheetnames)}")
 
 
 def _cert_sheet(ws,data,cert_key,cert_val,title,color,category):
@@ -300,7 +323,7 @@ def _cert_sheet(ws,data,cert_key,cert_val,title,color,category):
     def brd():
         s=Side(style="thin",color="CCCCCC"); return Border(left=s,right=s,top=s,bottom=s)
     label=cert_key.upper().replace("ISO22000","ISO 22000").replace("FSSC22000","FSSC 22000")
-    cols=["Сырьё" if category=="bad" else "АФИ","CAS","Поставщик","Страна","Контакт",label]
+    cols=["Ingredient" if category=="bad" else "API","CAS","Supplier","Country","Contact",label]
     widths=[22,14,28,14,30,18]
     ws.merge_cells("A1:F1")
     c=ws["A1"]; c.value=title; c.font=Font(bold=True,size=12,color="FFFFFF")
@@ -352,7 +375,7 @@ def main():
             print("  ⚠️  Введіть 1 або 2")
 
         category="pharma" if choice=="1" else "bad"
-        cat_label="Farma (AFI)" if category=="pharma" else "BAD (syryo)"
+        cat_label="Фарма (АФІ)" if category=="pharma" else "БАД (сировина)"
 
         print(f"\n  ✅ Режим: {cat_label}")
         if category=="bad":
@@ -377,13 +400,13 @@ def main():
             lines.append(line)
 
         substances=parse_input("\n".join(lines))
-        if not substances: print("!! Не вдалося розпізнати введення.\n"); continue
+        if not substances: print("⚠️ Не вдалося розпізнати введення.\n"); continue
 
-        print(f"\n 📋 Розпізнано {len(substances)} субстанцій ({cat_label}):\n")
+        print(f"\n📋 Розпізнано {len(substances)} субстанцій ({cat_label}):\n")
         for s in substances:
             print(f"   * {s['name']}  ->  CAS: {s.get('cas','-')}")
 
-        print(f"\n ⏳ Починаю пошук...\n")
+        print(f"\n⏳ Починаю пошук...\n")
 
         results=[]
         for i,sub in enumerate(substances,1):
@@ -417,20 +440,20 @@ def main():
 
         total_s=sum(len(e.get("suppliers",[])) for e in results)
         print(f"\n{'='*50}")
-        print(f"  ✅ Режим:       {cat_label}")
-        print(f"  Субстанцій:   {len(results)}")
-        print(f"  Постачальників:{total_s}")
+        print(f"  ✅ Режим:        {cat_label}")
+        print(f"  Субстанцій:      {len(results)}")
+        print(f"  Постачальників:  {total_s}")
         if category=="bad":
             iso_y=sum(1 for e in results for s in e.get("suppliers",[]) if s.get("iso22000") is True)
             fssc_y=sum(1 for e in results for s in e.get("suppliers",[]) if s.get("fssc22000") is True)
-            print(f"  З ISO 22000:   {iso_y}")
-            print(f"  З FSSC 22000: {fssc_y}")
+            print(f"  З ISO 22000:     {iso_y}")
+            print(f"  З FSSC 22000:    {fssc_y}")
         else:
             cep_y=sum(1 for e in results for s in e.get("suppliers",[]) if s.get("cep") is True)
             gmp_y=sum(1 for e in results for s in e.get("suppliers",[]) if s.get("gmp") is True)
-            print(f"  З CEP:               {cep_y}")
-            print(f"  З GMP:               {gmp_y}")
-        print(f"  Файл:                {output_path}")
+            print(f"  З CEP:           {cep_y}")
+            print(f"  З GMP:           {gmp_y}")
+        print(f"  Файл:            {output_path}")
         print(f"{'='*50}\n")
 
         json_path=str(output_path).replace(".xlsx",".json")
