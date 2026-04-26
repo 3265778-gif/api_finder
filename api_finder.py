@@ -19,7 +19,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 REPORTS_DIR = Path("reports")
 REPORTS_DIR.mkdir(exist_ok=True)
 
@@ -99,7 +98,8 @@ def _normalize_cert(value):
 
 
 def ai_search_suppliers(name, cas, formula, category):
-    if not ANTHROPIC_API_KEY:
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
         print("    !! ANTHROPIC_API_KEY not set")
         return [{"name": "Supplier unknown", "country": "-", "contact": "-",
                  "cep": None, "gmp": None, "iso22000": None, "fssc22000": None}]
@@ -150,7 +150,7 @@ Return ONLY valid JSON, nothing else. No markdown, no explanation."""
         resp = httpx.post(
             "https://api.anthropic.com/v1/messages",
             headers={
-                "x-api-key": ANTHROPIC_API_KEY,
+                "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             },
