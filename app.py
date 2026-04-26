@@ -1,7 +1,7 @@
 """
-web_app.py — Streamlit веб-приложение для API Finder
+app.py — Streamlit веб-приложение для API Finder
 ===================================================
-Запуск: streamlit run web_app.py
+Запуск: streamlit run app.py
 Доступно: http://localhost:8501
 """
 
@@ -13,6 +13,15 @@ from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 
+load_dotenv()
+
+# Streamlit Cloud: передать API-ключ из Secrets в переменную окружения
+try:
+    if "ANTHROPIC_API_KEY" in st.secrets:
+        os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
+except:
+    pass
+
 # Импортируем функции из api_finder
 from api_finder import (
     parse_input,
@@ -22,8 +31,6 @@ from api_finder import (
     generate_filename,
     generate_excel,
 )
-
-load_dotenv()
 
 # ─── КОНФИГУРАЦИЯ ────────────────────────────────────────────────────────────
 
@@ -129,11 +136,11 @@ with tab_search:
         """
     )
     
-    category_key = "bad" if "БАД" in category else "api"
+    category_key = "bad" if "БАД" in category else "pharma"
     
     st.sidebar.divider()
     st.sidebar.markdown("### ℹ️ Информация")
-    if category_key == "api":
+    if category_key == "pharma":
         st.sidebar.info("""
         **Режим: Фарма (АФИ)**
         
